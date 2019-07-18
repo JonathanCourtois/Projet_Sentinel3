@@ -7,9 +7,9 @@ function charRnn(N, tx, ty, opt)
     softmax)
 
   r = gpu(r)
-
-  evalcbRnn = () -> @show lossRnn(tx, ty)
-  return r, evalcbRnn
+  errorRnn = Float64[];
+  evalcbRnn = () -> push!(errorRnn, Tracker.data(lossRnn(tx, ty)))
+  return r, evalcbRnn, errorRnn
 end
 
 function lossRnn(xs, ys)
@@ -18,5 +18,5 @@ function lossRnn(xs, ys)
   return l
 end
 
-fTrainRnn(ep, r, Xs, Ys, opt, evalcbRnn) = Flux.train!(lossRnn, params(r), zip(Xs, Ys), opt,
-            cb = throttle(evalcbRnn, ep))
+fTrainRnn(r, Xs, Ys, opt, evalcbRnn) = Flux.train!(lossRnn, params(r), zip(Xs, Ys), opt,
+            cb = evalcbRnn)

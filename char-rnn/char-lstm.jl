@@ -1,4 +1,5 @@
 function charLstm(N, tx, ty, opt)
+
   l = Chain(
     LSTM(N, 128),
     LSTM(128, 128),
@@ -6,9 +7,9 @@ function charLstm(N, tx, ty, opt)
     softmax)
 
   l = gpu(l)
-
-  evalcbLstm = () -> @show lossLstm(tx, ty)
-  return l, evalcbLstm
+  errorLstm = Float64[];
+  evalcbLstm = () -> push!(errorLstm, Tracker.data(lossLstm(tx, ty)))
+  return l, evalcbLstm, errorLstm
 end
 
 function lossLstm(xs, ys)
@@ -17,5 +18,5 @@ function lossLstm(xs, ys)
   return lo
 end
 
-fTrainLstm(ep, l, Xs, Ys, opt, evalcbLstm) = Flux.train!(lossLstm, params(l), zip(Xs, Ys), opt,
-            cb = throttle(evalcbLstm, ep))
+fTrainLstm(l, Xs, Ys, opt, evalcbLstm) = Flux.train!(lossLstm, params(l), zip(Xs, Ys), opt,
+            cb = evalcbLstm)

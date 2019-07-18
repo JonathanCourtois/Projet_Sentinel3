@@ -2,7 +2,12 @@ using Flux
 using Flux: onehot, chunk, batchseq, throttle, crossentropy
 using StatsBase: wsample
 using Base.Iterators: partition
+using CuArrays
+using CUDAdrv
 
+CUDAdrv.name(CuDevice(1)) 	# voir le GPU 1
+dev = CuDevice(1)				# choisir le GPU 1
+ctx = CuContext(dev)
 
 include("char-rnn.jl")
 include("char-lstm.jl")
@@ -14,10 +19,58 @@ isfile("input.txt") ||
   download("https://cs.stanford.edu/people/karpathy/char-rnn/shakespeare_input.txt",
            "input.txt")
 
-text = collect(String(read("input.txt")))
-alphabet = [unique(text)..., '_']
+
+
+
+function cleanText(text ; upCase = false ,
+            number = false, accent = true, word = true )
+  if !upCase
+    text = replace(text, text => lowercase)
+  end
+  text = replace(text, r"[;:+†…«»—]" => ' ')
+  text = replace(text, r"[œ]" => "oe")
+  text = replace(text, r"\n|\\|\t" => ' ')
+  text = replace(text, r"[\[{]" => '(')
+  text = replace(text, r"[\]}]" => ')')
+  if !number
+    text = replace(text, r"[1234567890]" => "")
+  end
+  if !accent
+    text = replace(text, r"[âäà]" => 'a')
+    text = replace(text, r"[êëéè]" => 'e')
+    text = replace(text, r"[îïì]" => 'i')
+    text = replace(text, r"[ôöò]" => 'o')
+    text = replace(text, r"[ûüù]" => 'u')
+    text = replace(text, r"[ç]" => 'c')
+  end
+  text = replace(text, r"  " => ' ')
+  text = replace(text, r"   " => ' ')
+  text = replace(text, r"    " => ' ')
+  if word
+    text = replace(text, ' ' => "; ;")
+    text = split(text,r";")
+    alphabet = " ";
+    pas = 1000;
+    to = pas;
+    alphabet = unique([alphabet ; text[1:to]])
+    while to+pas < length(text)
+      alphabet = unique([alphabet ; text[to+1:to+pas]])
+      to += pas
+    end
+    alphabet = unique([alphabet ; text[to+1:length(text)]])
+    alphabet = [alphabet ; "_"]
+  else
+    text = collect(text)
+    alphabet = [unique(text)..., '_']
+  end
+  return text, alphabet
+end
+text = String(read("input.txt"))
+
+text, alphabet = cleanText(text; word = true)
+
 text = map(ch -> onehot(ch, alphabet), text)
-stop = onehot('_', alphabet)
+stop = onehot("_", alphabet)
 
 N = length(alphabet)
 seqlen = 100
@@ -25,9 +78,6 @@ nbatch = 30
 
 Xs = collect(partition(batchseq(chunk(text, nbatch), stop), seqlen))
 Ys = collect(partition(batchseq(chunk(text[2:end], nbatch), stop), seqlen))
-
-Xs = [Xs;Xs;Xs;Xs]
-Ys = [Ys;Ys;Ys;Ys]
 
 opt = ADAM(0.01)
 tx, ty = (Xs[5], Ys[5])
@@ -64,6 +114,11 @@ g, evalcbGru = charGru(N, tx, ty, opt)
 
 sample(g, alphabet, 1000) |> println
 
+
+
+print("end")
+
+destroy!(ctx)        # nettoyage
 # evalcb = function ()
 #   @show loss(Xs[5], Ys[5])
 #   println(sample(deepcopy(m), alphabet, 100))

@@ -8,8 +8,10 @@ function charGru(N, tx, ty, opt)
 
   g = gpu(g)
 
-  evalcbGru = () -> @show lossGru(tx, ty)
-  return g, evalcbGru
+  errorGru = Float64[];
+
+  evalcbGru = () -> push!(errorGru, Tracker.data(lossGru(tx, ty)))
+  return g, evalcbGru, errorGru
 end
 
 function lossGru(xs, ys)
@@ -18,5 +20,5 @@ function lossGru(xs, ys)
   return l
 end
 
-fTrainGru(ep, g, Xs, Ys, opt, evalcbGru) = Flux.train!(lossGru, params(g), zip(Xs, Ys), opt,
-            cb = throttle(evalcbGru, ep))
+fTrainGru(g, Xs, Ys, opt, evalcbGru) = Flux.train!(lossGru, params(g), zip(Xs, Ys), opt,
+            cb = evalcbGru)
